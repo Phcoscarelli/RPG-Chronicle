@@ -1,25 +1,23 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 model User {
-
   // Primary Key
-  id  String @id @default(cuid())
+  id String @id @default(cuid())
 
   //Authentication
-  username String
-  email String @unique
+  username String @unique
+  email    String @unique
   password String
-  
+
   //Relations
-  campaignMembers campaignMember[]
+  campaignMembers CampaignMember[]
 
   //Metadata
   createdAt DateTime @default(now())
@@ -31,9 +29,9 @@ model Campaign {
   id String @id @default(cuid())
 
   //Information
-  name String 
-  rpgSystem String
-  description String 
+  name        String
+  rpgSystem   String
+  description String
 
   //Images
   coverImageUrl String?
@@ -41,7 +39,220 @@ model Campaign {
   //Settings
   isPublic Boolean @default(false)
 
+  //Relations
+  members    CampaignMember[]
+  characters PlayerCharacter[]
+  WikiPages  WikiPage[]
+
   //Metadata
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum CampaignMemberStatus {
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum CampaignRole {
+  OWNER
+  GAME_MASTER
+  PLAYER
+  OBSERVER
+}
+
+model CampaignMember {
+  //Primary Key 
+  id String @id @default(cuid())
+
+  //Information
+  role   CampaignRole
+  status CampaignMemberStatus @default(ACTIVE)
+
+  //Relations
+  userId     String
+  campaignId String
+
+  user                     User               @relation(fields: [userId], references: [id])
+  campaign                 Campaign           @relation(fields: [campaignId], references: [id])
+  characters               PlayerCharacter[]
+  approvedPlayerCharacters PlayerCharacter[]  @relation("CharacterApprovals")
+  approvedWikiPages        WikiPage[]         @relation("WikiPageApprovals")
+  createdWikiRelations     WikiPageRelation[] @relation("WikiRelationCreator")
+  authoredWikiPages        WikiPageAuthor[]
+
+  //Metadata
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, campaignId])
+}
+
+enum CharacterStatus {
+  ALIVE
+  DEAD
+  RETIRED
+  MISSING
+}
+
+enum ApprovalStatus {
+  APPROVED
+  REJECTED
+  PENDING
+}
+
+model PlayerCharacter {
+  //Primary Key
+  id String @id @default(cuid())
+
+  //Identity
+  name           String
+  title          String?
+  race           String
+  characterClass String
+
+  //Story 
+  history     String?
+  appearance  String?
+  personality String?
+
+  //Images 
+  portraitUrl String?
+
+  //Status 
+  status         CharacterStatus @default(ALIVE)
+  approvalStatus ApprovalStatus  @default(PENDING)
+  diedAt         DateTime?
+
+  //Approval
+  approvedAt         DateTime?
+  approvedByMemberId String?
+
+  //Relations
+  campaignId       String
+  campaignMemberId String
+
+  approvedByMember CampaignMember? @relation("CharacterApprovals", fields: [approvedByMemberId], references: [id])
+  campaign         Campaign        @relation(fields: [campaignId], references: [id])
+  campaignMember   CampaignMember  @relation(fields: [campaignMemberId], references: [id])
+
+  //Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum WikiPageType {
+  NPC
+  CITY
+  LOCATION
+  ITEM
+  ORGANIZATION
+  RELIGION_GROUP
+  FACTION
+  KINGDOM
+  EVENT
+  DEITY
+  CUSTOM
+}
+
+enum WikiRelationType {
+  LOCATED_IN
+  MEMBER_OF
+  OWNS
+  LEADS
+  PARTICIPATED_IN
+  WORSHIPS
+  PARENT_OF
+  ALLY_OF
+  ENEMY_OF
+  RELATED_TO
+  CUSTOM
+}
+
+model WikiPage {
+  //Primary Key
+  id String @id @default(cuid())
+
+  //Identity
+  title String
+  slug  String
+
+  //Content
+  summary String?
+  content String
+
+  //Classification
+  type WikiPageType @default(CUSTOM)
+
+  //Approval
+  approvalStatus     ApprovalStatus @default(PENDING)
+  approvedAt         DateTime?
+  approvedByMemberId String?
+
+  //Relations
+  campaignId String
+
+  campaign         Campaign           @relation(fields: [campaignId], references: [id])
+  approvedByMember CampaignMember?    @relation("WikiPageApprovals", fields: [approvedByMemberId], references: [id])
+  authors          WikiPageAuthor[]
+  sourceRelations  WikiPageRelation[] @relation("SourcePage")
+  targetRelations  WikiPageRelation[] @relation("TargetPage")
+
+  //Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([campaignId, slug])
+}
+
+model WikiPageRelation {
+  //Primary Key
+  id String @id @default(cuid())
+
+  //Information
+  pageType WikiPageType @default(CUSTOM)
+  label    String?
+
+  //Relations
+  sourcePageId      String
+  targetPageId      String
+  createdByMemberId String
+
+  sourcePage      WikiPage       @relation("SourcePage", fields: [sourcePageId], references: [id])
+  targetPage      WikiPage       @relation("TargetPage", fields: [targetPageId], references: [id])
+  createdByMember CampaignMember @relation("WikiRelationCreator", fields: [createdByMemberId], references: [id])
+
+  //Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum WikiAuthorRole {
+  CREATOR
+  CONTRIBUTOR
+  REVIEWER
+}
+
+model WikiPageAuthor {
+  //Primary Key
+  id String @id @default(cuid())
+
+  //Information
+  role WikiAuthorRole @default(CONTRIBUTOR)
+
+  //Relations
+  wikiPageId       String
+  campaignMemberId String
+
+  wikiPage       WikiPage       @relation(fields: [wikiPageId], references: [id])
+  campaignMember CampaignMember @relation(fields: [campaignMemberId], references: [id])
+
+  //Metadata
+  createdAt DateTime @default(now())
+
+  @@unique([wikiPageId, campaignMemberId])
 }
